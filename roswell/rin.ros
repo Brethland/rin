@@ -1,0 +1,18 @@
+#!/bin/sh
+#|-*- mode:lisp -*-|#
+#|
+exec ros -Q -L sbcl-bin -- $0 "$@"
+|#
+(progn
+  (ros:ensure-asdf)
+  (load "./rin.asd")
+  (let ((*standard-output* (make-broadcast-stream))
+        (*trace-output* (make-broadcast-stream)))
+    (funcall (intern (string '#:load-system) '#:asdf) '#:rin)))
+
+(defpackage #:ros/script/rin
+  (:use #:cl))
+(in-package #:ros/script/rin)
+
+(defun main (&rest argv)
+  (apply #'rin:main argv))
