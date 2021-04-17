@@ -1,11 +1,6 @@
-(in-package :cl-user)
-(defpackage :rin
-  (:use :cl)
-  (:export :main))
-
 (in-package :rin)
 
-(defvar cfg-msg ";;; This is config file for your site.~%(site-name example.com)")
+(defconstant +cfg-msg+ ";;; This is config file for your site.~2%(site-name example.com)")
 
 (defun get-cwd ()
   "Get the current directory pathname in an implementation-portable way"
@@ -26,7 +21,7 @@
                             :direction :output
                             :if-exists :supersede
                             :if-does-not-exist :create)
-      (format stream cfg-msg))
+      (format stream +cfg-msg+))
     (format t "Your site has been created!~%")))
 
 (defun generate-opts ()
