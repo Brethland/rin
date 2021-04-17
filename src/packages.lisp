@@ -1,11 +1,10 @@
-(in-package :cl-user)
 (defpackage :rin
-  (:use :cl
-        :uiop)
-  (:export
-   :main
-   :init
-   :help
-   :new))
+  (:use :cl :uiop)
+  (:import-from :cl-ppcre #:split)
+  (:import-from :alexandria #:make-keyword)
+  (:export #:main
+           #:init
+           #:help
+           #:new))
 
 ;;; packages.lisp ends here

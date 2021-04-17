@@ -10,12 +10,18 @@
   :description "A fast static site generator"
   :depends-on (:unix-opts
                :cl-ppcre
-               :uiop)
+               :uiop
+               :alexandria
+               :cl-fad
+               :3bmd
+               :3bmd-ext-code-blocks)
   :components ((:module "src"
                 :components
-                ((:file "rin" :depends-on ("packages" "util"))
-                 (:file "template" :depends-on ("packages" "util"))
-                 (:file "util" :depends-on ("packages"))
-                 (:file "packages")))))
+                ((:file "rin" :depends-on ("packages"))
+                 (:file "site" :depends-on ("packages"))
+                 (:file "post" :depends-on ("packages"))
+                 (:file "template" :depends-on ("util"))
+                 (:file "packages" :depends-on ("util"))
+                 (:file "util")))))
 
 ;;; rin.asd end here

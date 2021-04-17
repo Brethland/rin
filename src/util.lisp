@@ -1,23 +1,18 @@
-(in-package :rin)
 (defpackage :rin-util
   (:use :cl)
-  (:export
-   :get-cwd
-   :contents
-   :trim-till-newline
-   :funcall-recursive
-   :escape-for-xml
-   :escape-for-url
-   :string-to-keyword))
+  (:import-from :alexandria #:make-keyword)
+  (:export #:contents
+           #:slurp
+           #:trim-till-newline
+           #:funcall-recursive
+           #:escape-for-xml
+           #:escape-for-url
+           #:parse-initarg
+           #:parse-metadata
+           #:do-files
+           #:write-file))
 
 (in-package :rin-util)
-
-(defun get-cwd ()
-  "Get the current directory pathname in an implementation-portable way"
-  (let ((dir (truename ".")))
-    (if (stringp dir)
-        (parse-namestring dir)
-        dir)))
 
 (defun funcall-recursive (v)
   (if (functionp v)
@@ -32,6 +27,12 @@
       (if (< pos file-length)
           (subseq seq 0 pos)
           seq))))
+
+(defun slurp (stream)
+  "Get remained string in STREAM"
+  (let ((seq (make-string (- (file-length stream) (file-position stream)))))
+    (read-sequence seq stream)
+    (remove #\Nul seq)))
 
 (defun trim-till-newline (string)
   (remove #\Newline (string-right-trim '(#\Space #\Tab) string)
@@ -65,7 +66,35 @@
             else
               do (format out "%~2,'0x" (char-code char))))))
 
-(defun string-to-keyword (string)
-  (nth-value 0 (intern string :keyword)))
+(defun parse-initarg (string)
+  "Parse a initarg name/value pair from STRING"
+  (let ((name (string-upcase (subseq string 0 (position #\: string))))
+        (match (nth-value 1 (ppcre:scan-to-strings "[a-zA-Z]+:\\s+(.*)" string))))
+    (when match
+      (list (make-keyword name) (aref match 0)))))
+
+(defun parse-metadata (stream)
+  "Given a STREAM, parse metadata from it"
+  (flet ((get-next-line (input)
+           (string-trim '(#\Space #\Return #\Newline #\Tab) (read-line input nil))))
+    (unless (string= (get-next-line stream) "---")
+      (error "The file ~a lacks metadata" (file-namestring stream)))
+    (loop for line = (get-next-line stream)
+       until (string= line "---")
+          appending (parse-initarg line))))
+
+(defmacro do-files ((var path) &body body)
+  "Iterate files in PATH and run BODY"
+  `(cl-fad:walk-directory ,path (lambda (,var) ,@body)
+                          :follow-symlinks nil))
+
+(defun write-file (path file)
+  (ensure-directories-exist path)
+  (with-open-file (out path
+                       :direction :output
+                       :if-exists :supersede
+                       :if-does-not-exist :create
+                       :external-format :utf-8)
+    (write file :stream out :escape nil)))
 
 ;;; util.lisp ends here

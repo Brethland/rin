@@ -11,22 +11,20 @@
   "---
 title: ~a
 author: ~a
-data: ~a-~2,,,'0@a-~2,,,'0@a ~2,,,'0@a:~2,,,'0@a:~2,,,'0@a
-tag:
+type: ~a
+date: ~a-~2,,,'0@a-~2,,,'0@a ~2,,,'0@a:~2,,,'0@a:~2,,,'0@a
+tags:
 ---
 
 <!-- Your post starts here -->")
 
 (defun read-config ()
-  "Read config from current dir"
-  (let ((path (merge-pathnames "config" (rin-util:get-cwd))))
+  "Read config from current dir without load it"
+  (let ((path (merge-pathnames "config" (getcwd))))
     (if (probe-file path)
         (with-open-file (in path)
           (read in))
         nil)))
-
-(defun split-args (string)
-  (ppcre:split "." string :sharedp t))
 
 (defun generate-opts ()
   "Generate command line arguments parser"
@@ -55,14 +53,14 @@ tag:
   "Error handler for opts:missing-arg"
   (format t "fatal: option ~s needs an argument!~%"
     (opts:option condition))
-  (uiop:quit -1))
+  (quit -1))
 
 (defun arg-parser-failed (condition)
   "Error handler for opts:arg-parser-failed"
   (format t "fatal: cannot parse ~s as argument of ~s~%"
     (opts:raw-arg condition)
     (opts:option condition))
-  (uiop:quit -1))
+  (quit -1))
 
 (defmacro when-option ((options opt) &body body)
   `(let ((it (getf ,options ,opt)))
@@ -71,12 +69,11 @@ tag:
 
 (defun help ()
   (opts:describe
-   :prefix "rin, a fast static site generator")
-  (uiop:quit 0))
+   :prefix "rin, a fast static site generator"))
 
 (defun init (dir)
   "Create a new empty project in given path"
-  (let* ((user-path (rin-util:get-cwd))
+  (let* ((user-path (getcwd))
          (path (merge-pathnames (concatenate 'string dir "/") user-path)))
     (ensure-directories-exist path)
     (ensure-directories-exist (merge-pathnames #p"post/" path))
@@ -103,7 +100,7 @@ tag:
             (let* ((file-name (format nil "~a-~2,,,'0@a-~2,,,'0@a-~a" year month date name))
                    (path (merge-pathnames (make-pathname :name file-name :type doc-type) #p"post/")))
               (with-open-file (in path :direction :output :if-exists :error :if-does-not-exist :create)
-                (format in *new-post-msg* name author
+                (format in *new-post-msg* name author doc-type
                         year month date hour minute second)
                 (format t "Successfully create file ~a!~%" path))))))))
 
@@ -117,17 +114,18 @@ tag:
                    (opts:arg-parser-failed #'arg-parser-failed))
           (opts:get-opts))
     (when-option (options :help)
-      (help))
+      (help)
+      (quit 0))
     (when-option (options :init)
       (init it)
-      (uiop:quit 0))
+      (quit 0))
     (when-option (options :new)
       (new it)
-      (uiop:quit 0))
+      (quit 0))
     (when free-args
       (format t "unexpected args: ~a~2%"
         free-args))
     (format t "use -h to see help~%")
-    (uiop:quit -1)))
+    (quit -1)))
 
 ;;; rin.lisp ends here

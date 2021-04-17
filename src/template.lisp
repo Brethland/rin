@@ -1,15 +1,17 @@
-(in-package :rin)
-
 (defpackage :rin-template
   (:use :cl :rin-util)
-  (:export
-   :add-template
-   :execute
-   :clear-functions
-   :remove-function
-   :*function-package*
-   :*escape-type*))
-
+  (:import-from :cl-ppcre
+                #:split
+                #:create-scanner
+                #:scan
+                #:quote-meta-chars)
+  (:import-from :alexandria #:make-keyword)
+  (:export #:add-template
+           #:execute
+           #:clear-functions
+           #:remove-function
+           #:*function-package*
+           #:*escape-type*))
 (in-package :rin-template)
 
 (defpackage :rin-template-intern (:use :cl))
@@ -82,14 +84,14 @@
 
 (defmacro getf-env (key)
   (let ((plist (find-symbol "ENV" *function-package*))
-        (keys (ppcre:split "." key :sharedp t)))
+        (keys (split "." key :sharedp t)))
     (labels ((plist-find (plist keys)
                (if (null keys)
                    plist
                    (plist-find
                     (if (zerop (length (first keys)))
                         plist
-                        `(getf* ,plist ,(string-to-keyword (first keys))))
+                        `(getf* ,plist ,(make-keyword (first keys))))
                     (rest keys)))))
       (plist-find plist keys))))
 
@@ -100,7 +102,7 @@
     "Memorize a scanner of definite tags"
     (or (gethash tag scanner-hash)
         (setf (gethash tag scanner-hash)
-              (ppcre:create-scanner tag))))
+              (create-scanner tag))))
   (defun clear-tag-hash ()
     "Remove all scanners from cache"
     (clrhash scanner-hash)))
@@ -111,11 +113,11 @@
      \"\\1\"))) (format nil \"~a\" (rin-util::funcall-recursive (rin-template::getf-env \"\\2\")))) ")
     ("\\s+@else\\s*" . " ) (t ")
     ("\\s+@endif\\s*" . " )) ")
-    ("\\s+@repeat\\s+(\\d+)\\s*"  . " (dotimes (i \\1) ")
-    ("\\s+@repeat\\s+(\\S+)\\s*"  . " (dotimes (i (or (rin-util::funcall-recursive (rin-template::getf-env \"\\1\")) 0)) ")
-    ("\\s+@endrepeat\\s*"         . " ) ")
-    ("\\s+@for\\s+(\\S+)\\s*"    . " (dolist (env (rin-util::funcall-recursive (rin-template::getf-env \"\\1\"))) ")
-    ("\\s+@endfor\\s*"           . " ) ")
+    ("\\s+@repeat\\s+(\\d+)\\s*" . " (dotimes (i \\1) ")
+    ("\\s+@repeat\\s+(\\S+)\\s*" . " (dotimes (i (or (rin-util::funcall-recursive (rin-template::getf-env \"\\1\")) 0)) ")
+    ("\\s+@endrepeat\\s*" . " ) ")
+    ("\\s+@for\\s+(\\S+)\\s*" . " (dolist (env (rin-util::funcall-recursive (rin-template::getf-env \"\\1\"))) ")
+    ("\\s+@endfor\\s*" . " ) ")
     ("=?\\s+@var\\s+(\\S+)\\s+-(\\S+)\\s+(\\S+)\\s*" . "= (rin-template::escape (rin-template::getf-env \"\\1\") :\\2 :\\3) ")
     ("=?\\s+@var\\s+(\\S+)\\s*" . "= (rin-template::escape (rin-template::getf-env \"\\1\")) ")
     ("\\s+@with\\s+(\\S+)\\s*" . " (let ((env (rin-util::funcall-recursive (rin-template::getf-env \"\\1\")))) ")
@@ -137,12 +139,12 @@
                    (expand (ppcre:regex-replace-all regex string replacement :simple-calls t)
                            (rest expands))))))
     (ppcre:regex-replace-all (format nil "(?is)(~A\\-?)(.+?)(\\-?~A)"
-                                     (ppcre:quote-meta-chars *tpl-starter*)
-                                     (ppcre:quote-meta-chars *tpl-ender*))
+                                     (quote-meta-chars *tpl-starter*)
+                                     (quote-meta-chars *tpl-ender*))
                              string
                              (lambda (match start-tag string end-tag)
                                (declare (ignore match))
-                               (if (ppcre:scan "(?is)^#.+#$" string)  ; is comment
+                               (if (scan "(?is)^#.+#$" string)  ; is comment
                                    ""
                                    (concatenate 'string start-tag (expand string) end-tag)))
                              :simple-calls t)))
@@ -187,7 +189,7 @@
                       (construct-function-body
                        code
                        (if trim-end
-                           (let ((next-pos (ppcre:scan "(?:\\S|\\n)" code :start (+ end-code (length *tpl-ender*)))))
+                           (let ((next-pos (scan "(?:\\S|\\n)" code :start (+ end-code (length *tpl-ender*)))))
                              (cond
                                ((null next-pos) (length code))
                                ((char= (elt code next-pos) #\Newline)
