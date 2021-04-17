@@ -1,7 +1,7 @@
 (in-package :rin)
 
 (defpackage :rin-template
-  (:use :cl)
+  (:use :cl :rin-util)
   (:export
    :add-template
    :execute
@@ -13,6 +13,8 @@
 (in-package :rin-template)
 
 (defpackage :rin-template-intern (:use :cl))
+
+;; Template compiled function class
 
 (defclass tpl-function ()
   ((path :initarg :path
@@ -28,6 +30,8 @@
                  :time time
                  :code code))
 
+;; Package specified variables
+
 (defvar *function-package* (find-package :rin-template-intern)
   "Package the emb function body gets interned to.")
 
@@ -38,46 +42,10 @@
 
 (defvar *functions* (make-hash-table :test #'equal))
 
-(defun clear-functions ()
-  (clrhash *functions*))
-
-(defun remove-function (name)
-  (remhash name *functions*))
-
 (defvar *escape-type* :raw
   "How to escape special characters in variable")
 
-(defun escape-for-xml (string)
-  "Escape special character in html"
-  (with-output-to-string (out)
-    (with-input-from-string (in string)
-      (loop for char = (read-char in nil nil)
-            while char
-            do (case char
-                 ((#\<) (write-string "&lt;" out))
-                 ((#\>) (write-string "&gt;" out))
-                 ((#\") (write-string "&quot;" out))
-                 ((#\') (write-string "&#39;" out))
-                 ((#\&) (write-string "&amp;" out))
-                 (otherwise (write-char char out)))))))
-
-(defun escape-for-url (string)
-  "Escape special character in url"
-  (with-output-to-string (out)
-    (with-input-from-string (in string)
-      (loop for char = (read-char in nil nil)
-            while char
-            if (char= char #\Space)
-              do (write-char #\+ out)
-            else if (find char "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.")
-                   do (write-char char out)
-            else
-              do (format out "%~2,'0x" (char-code char))))))
-
-(defun funcall-recursive (v)
-  (if (functionp v)
-    (funcall-recursive (funcall v))
-    v))
+;; Escape char in string
 
 (defun escape (string &key (escape *escape-type*))
   "Emit given string. Escape if wanted"
@@ -93,8 +61,7 @@
        (escape-for-url true-str))
       (otherwise true-str))))
 
-(defun string-to-keyword (string)
-  (nth-value 0 (intern string :keyword)))
+;; Get variable in environment
 
 (defgeneric getf* (ty key &optional default)
   (:documentation "Get a value from some data structure by key"))
@@ -115,7 +82,7 @@
 
 (defmacro getf-env (key)
   (let ((plist (find-symbol "ENV" *function-package*))
-        (keys (cl-ppcre:split "." key :sharedp t)))
+        (keys (ppcre:split "." key :sharedp t)))
     (labels ((plist-find (plist keys)
                (if (null keys)
                    plist
@@ -126,32 +93,7 @@
                     (rest keys)))))
       (plist-find plist keys))))
 
-(defgeneric execute (name &key env generator)
-  (:documentation "Execute a generated function with environment"))
-
-(defmethod execute ((name t) &key env generator)
-  (funcall (get-function name) :env env :generator generator :name name))
-
-(defmethod execute ((name pathname) &key env generator)
-  (let ((fun (or (get-function name)
-                 (tpl-function-code (add-template name name)))))
-    (funcall fun :env env :generator generator :name name)))
-
-(defun get-function (name)
-  "Get generated function in hash table.
-Recompile if file has been modified."
-  (let* ((function (gethash name *functions*))
-         (path (when function (tpl-function-path function))))
-    (cond ((and (not (typep name 'pathname)) (null function))
-           (error "no such function ~S." name))
-          ((null function)
-           (return-from get-function))
-          ((and path
-                (> (file-write-date path) (tpl-function-time function)))
-           (let ((code (construct-function (contents path))))
-             (setf (tpl-function-time function) (file-write-date path)
-                   (tpl-function-code function) code))))
-    (tpl-function-code function)))
+;;; (Re)Compile functions from template
 
 (let ((scanner-hash (make-hash-table :test #'equal)))
   (defun scanner-for-expand-tag (tag)
@@ -164,17 +106,24 @@ Recompile if file has been modified."
     (clrhash scanner-hash)))
 
 (defparameter *tag-regexp*
-  `(("\\s+@if\\s+(\\S+)\\s*" . " (cond ((rin-template::funcall-recursive (rin-template::getf-env \"\\1\")) ")
-    ("\\s+@ifnotempty\\s+(\\S+)\\s*" . " (cond ((let* ((value (rin-template::funcall-recursive (rin-template::getf-env \"\\1\")))) (or (numberp value) (> (length value) 0))) ")
-    ("\\s+@ifequal\\s+(\\S+)\\s+(\\S+)\\s*" . "  (cond ((equal (format nil \"~a\" (rin-template::funcall-recursive (rin-template::getf-env
-     \"\\1\"))) (format nil \"~a\" (rin-template::funcall-recursive (rin-template::getf-env \"\\2\")))) ")
+  `(("\\s+@if\\s+(\\S+)\\s*" . " (cond ((rin-util::funcall-recursive (rin-template::getf-env \"\\1\")) ")
+    ("\\s+@ifequal\\s+(\\S+)\\s+(\\S+)\\s*" . "  (cond ((equal (format nil \"~a\" (rin-util::funcall-recursive (rin-template::getf-env
+     \"\\1\"))) (format nil \"~a\" (rin-util::funcall-recursive (rin-template::getf-env \"\\2\")))) ")
     ("\\s+@else\\s*" . " ) (t ")
     ("\\s+@endif\\s*" . " )) ")
+    ("\\s+@repeat\\s+(\\d+)\\s*"  . " (dotimes (i \\1) ")
+    ("\\s+@repeat\\s+(\\S+)\\s*"  . " (dotimes (i (or (rin-util::funcall-recursive (rin-template::getf-env \"\\1\")) 0)) ")
+    ("\\s+@endrepeat\\s*"         . " ) ")
+    ("\\s+@for\\s+(\\S+)\\s*"    . " (dolist (env (rin-util::funcall-recursive (rin-template::getf-env \"\\1\"))) ")
+    ("\\s+@endfor\\s*"           . " ) ")
     ("=?\\s+@var\\s+(\\S+)\\s+-(\\S+)\\s+(\\S+)\\s*" . "= (rin-template::escape (rin-template::getf-env \"\\1\") :\\2 :\\3) ")
     ("=?\\s+@var\\s+(\\S+)\\s*" . "= (rin-template::escape (rin-template::getf-env \"\\1\")) ")
-    ("\\s+@with\\s+(\\S+)\\s*" . " (let ((env (rin-template::funcall-recursive (rin-template::getf-env \"\\1\")))) ")
+    ("\\s+@with\\s+(\\S+)\\s*" . " (let ((env (rin-util::funcall-recursive (rin-template::getf-env \"\\1\")))) ")
     ("\\s+@endwith\\s*" . " ) ")
-    ("#.*" . ""))
+    ("\\s+@include\\s+(\\S+)\\s*" . "= (let ((rin-template:*escape-type* rin-template:*escape-type*))
+                                            (rin-template:execute (merge-pathnames \"\\1\" template-path-default) :env env)) ")
+    ("\\s+@call\\s+(\\S+)\\s*" . "= (let ((rin-template:*escape-type* rin-template:*escape-type*))
+                                            (rin-template:execute \"\\1\" :env env)) "))
   "A list of regex and replacement")
 
 (defun expand-tags (string)
@@ -197,20 +146,6 @@ Recompile if file has been modified."
                                    ""
                                    (concatenate 'string start-tag (expand string) end-tag)))
                              :simple-calls t)))
-
-(defun contents (pathname)
-  (with-open-file (in pathname :direction :input)
-    (let* ((file-length (file-length in))
-           (seq (make-string file-length))
-           (pos (read-sequence seq in)))
-      (if (< pos file-length)
-          (subseq seq 0 pos)
-          seq))))
-
-(defun trim-till-newline (string)
-  (remove #\Newline (string-right-trim '(#\Space #\Tab) string)
-          :from-end t
-          :count 1))
 
 (defun tag-format (tag-type)
   "Return the format string depends on whether it is
@@ -265,13 +200,31 @@ Recompile if file has been modified."
   (compile nil
            `,(let ((*package* *function-package*))
                (read-from-string
-                (format nil "(lambda (&key env generator name)(declare (ignorable env generator))
-                            (let ((topenv env)
-                                  (template-path-default (if (typep name 'pathname) name *default-pathname-defaults*)))
-                              (declare (ignorable topenv template-path-default))
-                              (with-output-to-string (*standard-output*)
-                                (progn ~A))))"
+                (format nil "(lambda (&key env name)
+                               (declare (ignorable env))
+                               (let ((template-path-default (if (typep name 'pathname) name *default-pathname-defaults*)))
+                                 (declare (ignorable template-path-default))
+                                 (with-output-to-string (*standard-output*)
+                                   (progn ~A))))"
                         (construct-function-body (expand-tags code)))))))
+
+(defun get-function (name)
+  "Get generated function in hash table.
+Recompile if file has been modified."
+  (let* ((function (gethash name *functions*))
+         (path (when function (tpl-function-path function))))
+    (cond ((and (not (typep name 'pathname)) (null function))
+           (error "no such function ~S." name))
+          ((null function)
+           (return-from get-function))
+          ((and path
+                (> (file-write-date path) (tpl-function-time function)))
+           (let ((code (construct-function (contents path))))
+             (setf (tpl-function-time function) (file-write-date path)
+                   (tpl-function-code function) code))))
+    (tpl-function-code function)))
+
+;; Functions exported
 
 (defgeneric add-template (name template)
   (:documentation "Add a new template into hash table"))
@@ -289,5 +242,22 @@ Recompile if file has been modified."
           (make-function template
                          (file-write-date template)
                          code))))
+
+(defgeneric execute (name &key env)
+  (:documentation "Execute a generated function with environment"))
+
+(defmethod execute ((name t) &key env)
+  (funcall (get-function name) :env env :name name))
+
+(defmethod execute ((name pathname) &key env)
+  (let ((fun (or (get-function name)
+                 (tpl-function-code (add-template name name)))))
+    (funcall fun :env env :name name)))
+
+(defun clear-functions ()
+  (clrhash *functions*))
+
+(defun remove-function (name)
+  (remhash name *functions*))
 
 ;;; template.lisp ends here

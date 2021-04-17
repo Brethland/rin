@@ -1,41 +1,50 @@
 (in-package :rin)
 
-(defconstant +cfg-msg+ ";;; This is config file for your site.~2%(site-name example.com)")
+(defvar *cfg-msg*
+  ";;; This is config file for your site.~2%
+(:domain \"example.com\"
+ :title \"blog\"
+ :author \"joe\"
+ :doc-type \"markdown\")")
 
-(defun get-cwd ()
-  "Get the current directory pathname in an implementation-portable way"
-  (let ((dir (truename ".")))
-    (if (stringp dir)
-        (parse-namestring dir)
-        dir)))
+(defvar *new-post-msg*
+  "---
+title: ~a
+author: ~a
+data: ~a-~2,,,'0@a-~2,,,'0@a ~2,,,'0@a:~2,,,'0@a:~2,,,'0@a
+tag:
+---
 
-(defun create-project (dir-name)
-  "Create a new empty project in given path"
-  (let* ((user-path (get-cwd))
-         (path (merge-pathnames (concatenate 'string dir-name "/") user-path)))
-    (ensure-directories-exist path)
-    (ensure-directories-exist (merge-pathnames #p"post/" path))
-    (ensure-directories-exist (merge-pathnames #p"static/" path))
-    (ensure-directories-exist (merge-pathnames #p"style/" path))
-    (with-open-file (stream (merge-pathnames #p"config" path)
-                            :direction :output
-                            :if-exists :supersede
-                            :if-does-not-exist :create)
-      (format stream +cfg-msg+))
-    (format t "Your site has been created!~%")))
+<!-- Your post starts here -->")
+
+(defun read-config ()
+  "Read config from current dir"
+  (let ((path (merge-pathnames "config" (rin-util:get-cwd))))
+    (if (probe-file path)
+        (with-open-file (in path)
+          (read in))
+        nil)))
+
+(defun split-args (string)
+  (ppcre:split "." string :sharedp t))
 
 (defun generate-opts ()
   "Generate command line arguments parser"
   (opts:define-opts
-      (:name :help
-             :description "help"
-             :short #\h
-             :long "help")
-      (:name :init
-             :description "init a new site with given name"
-             :short #\i
-             :long "init"
-             :arg-parser #'identity)))
+    (:name :help
+           :description "help"
+           :short #\h
+           :long "help")
+    (:name :init
+           :description "init a new site with given name"
+           :short #\i
+           :long "init"
+           :arg-parser #'identity)
+    (:name :new
+           :description "create a new post"
+           :short #\n
+           :long "new"
+           :arg-parser #'identity)))
 
 (defun unknown-option (condition)
   "Error handler for opts:unknown-option"
@@ -60,6 +69,44 @@
      (when it
        ,@body)))
 
+(defun help ()
+  (opts:describe
+   :prefix "rin, a fast static site generator")
+  (uiop:quit 0))
+
+(defun init (dir)
+  "Create a new empty project in given path"
+  (let* ((user-path (rin-util:get-cwd))
+         (path (merge-pathnames (concatenate 'string dir "/") user-path)))
+    (ensure-directories-exist path)
+    (ensure-directories-exist (merge-pathnames #p"post/" path))
+    (ensure-directories-exist (merge-pathnames #p"static/" path))
+    (ensure-directories-exist (merge-pathnames #p"style/" path))
+    (with-open-file (stream (merge-pathnames #p"config" path)
+                            :direction :output
+                            :if-exists :supersede
+                            :if-does-not-exist :create)
+      (format stream *cfg-msg*))
+    (format t "Your site has been created!~%")))
+
+(defun new (name)
+  "Create a new document with current time"
+  (let ((cfg (read-config)))
+    (if (null cfg)
+        (format *error-output* "no config file in this directory~%")
+        (let ((author (getf cfg :author ""))
+              (doc-type (getf cfg :doc-type "markdown")))
+          (multiple-value-bind
+              (second minute hour date month year day-of-week dst-p tz)
+              (get-decoded-time)
+              (declare (ignore day-of-week dst-p tz))
+            (let* ((file-name (format nil "~a-~2,,,'0@a-~2,,,'0@a-~a" year month date name))
+                   (path (merge-pathnames (make-pathname :name file-name :type doc-type) #p"post/")))
+              (with-open-file (in path :direction :output :if-exists :error :if-does-not-exist :create)
+                (format in *new-post-msg* name author
+                        year month date hour minute second)
+                (format t "Successfully create file ~a!~%" path))))))))
+
 (defun main (&rest args)
   "Entry of rin"
   (declare (ignore args))
@@ -70,11 +117,12 @@
                    (opts:arg-parser-failed #'arg-parser-failed))
           (opts:get-opts))
     (when-option (options :help)
-      (opts:describe
-        :prefix "rin, a fast static site generator")
-      (uiop:quit 0))
+      (help))
     (when-option (options :init)
-      (create-project it)
+      (init it)
+      (uiop:quit 0))
+    (when-option (options :new)
+      (new it)
       (uiop:quit 0))
     (when free-args
       (format t "unexpected args: ~a~2%"

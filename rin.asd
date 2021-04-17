@@ -13,8 +13,9 @@
                :uiop)
   :components ((:module "src"
                 :components
-                ((:file "rin" :depends-on ("packages"))
-                 (:file "template" :depends-on ("packages"))
+                ((:file "rin" :depends-on ("packages" "util"))
+                 (:file "template" :depends-on ("packages" "util"))
+                 (:file "util" :depends-on ("packages"))
                  (:file "packages")))))
 
 ;;; rin.asd end here

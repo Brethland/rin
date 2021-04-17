@@ -2,6 +2,10 @@
 (defpackage :rin
   (:use :cl
         :uiop)
-  (:export :main))
+  (:export
+   :main
+   :init
+   :help
+   :new))
 
 ;;; packages.lisp ends here
