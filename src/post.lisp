@@ -25,10 +25,12 @@
   (:default-initargs :excerpt nil :tags nil))
 
 (defmethod initialize-instance :after ((object post) &key)
-  (with-slots (url file author excerpt type content tags) object
+  (with-slots (url title author date excerpt type content tags) object
     (let* ((doc-type (make-keyword (string-upcase type)))
            (rendered (render content doc-type)))
-      (setf url (generate-url object (rin-util:escape-for-url file))
+      (setf url (generate-url object
+                              (rin-util:escape-for-url
+                               (concatenate 'string date "-" title)))
             type doc-type
             excerpt (or excerpt (first (split (excerpt-sep *site-config*)
                                               rendered
@@ -78,12 +80,27 @@
       (let ((post (apply 'make-instance (class-name class) (parse file))))
         (add-to-site post)))))
 
+(defmethod find-theme ((class (eql (find-class 'post))))
+  (let ((path (merge-pathnames #p"style/post.html" (getcwd))))
+    (if (probe-file path)
+        (progn
+          (rin-template:add-template "post" path)
+          (lambda (obj)
+            (let ((env (list :title (post-title obj)
+                             :author (post-author obj)
+                             :excerpt (post-excerpt obj)
+                             :date (post-date obj)
+                             :tags (post-tags obj)
+                             :content (post-content obj))))
+              (rin-template:execute "post" :env env))))
+        (error "Missing template 'style/post.html' for post"))))
+
 (defun by-date (post)
   "Sort CONTENT in reverse chronological order."
   (sort post #'string> :key #'post-date))
 
 (defmethod save ((class (eql (find-class 'post))))
-  (loop for (next post prev) on (append '(nil) (by-date (find-all 'post)))
-    while post do (write-to-disk post nil :prev prev :next next)))
+  (dolist (obj (by-date (find-all 'post)))
+    (write-to-disk obj (find-theme class))))
 
 ;;; post.lisp ends here

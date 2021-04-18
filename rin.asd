@@ -21,7 +21,7 @@
                  (:file "site" :depends-on ("packages"))
                  (:file "post" :depends-on ("packages"))
                  (:file "template" :depends-on ("util"))
-                 (:file "packages" :depends-on ("util"))
+                 (:file "packages" :depends-on ("util" "template"))
                  (:file "util")))))
 
 ;;; rin.asd end here

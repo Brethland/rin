@@ -4,7 +4,6 @@
   (:export #:contents
            #:slurp
            #:trim-till-newline
-           #:funcall-recursive
            #:escape-for-xml
            #:escape-for-url
            #:parse-initarg
@@ -13,11 +12,6 @@
            #:write-file))
 
 (in-package :rin-util)
-
-(defun funcall-recursive (v)
-  (if (functionp v)
-    (funcall-recursive (funcall v))
-    v))
 
 (defun contents (pathname)
   (with-open-file (in pathname :direction :input)

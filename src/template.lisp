@@ -5,11 +5,11 @@
                 #:create-scanner
                 #:scan
                 #:quote-meta-chars)
-  (:import-from :alexandria #:make-keyword)
   (:export #:add-template
            #:execute
            #:clear-functions
            #:remove-function
+           #:pprint-tpl
            #:*function-package*
            #:*escape-type*))
 (in-package :rin-template)
@@ -24,13 +24,17 @@
    (time :initarg :time
          :accessor tpl-function-time)
    (code :initarg :code
-         :accessor tpl-function-code)))
+         :accessor tpl-function-code)
+   (form :initarg :form
+         :initform nil
+         :accessor tpl-function-form)))
 
-(defun make-function (path time code)
+(defun make-function (path time code form)
   (make-instance 'tpl-function
                  :path path
                  :time time
-                 :code code))
+                 :code code
+                 :form form))
 
 ;; Package specified variables
 
@@ -51,11 +55,7 @@
 
 (defun escape (string &key (escape *escape-type*))
   "Emit given string. Escape if wanted"
-  (let ((true-str (cond ((stringp string) string)
-                        ((null string) "")
-                        ((functionp string)
-                         (format nil "~a" (or (funcall-recursive string) "")))
-                        (t (format nil "~a" string)))))
+  (let ((true-str (or string "")))
     (case escape
       ((:html :xml)
        (escape-for-xml true-str))
@@ -66,32 +66,34 @@
 ;; Get variable in environment
 
 (defgeneric getf* (ty key &optional default)
-  (:documentation "Get a value from some data structure by key"))
+  (:documentation "Get a value from some data structure by key")
+  (:method ((plist list) key &optional default)
+    (getf plist key default))
+  (:method ((table hash-table) key &optional default)
+    (gethash key table default))
+  (:method ((object standard-object) key &optional default)
+    (let ((slot-name (intern (princ-to-string key)
+                             (symbol-package (class-name (class-of object))))))
+      (if (and (slot-exists-p object slot-name)
+               (slot-boundp object slot-name))
+          (slot-value object slot-name)
+          default))))
 
-(defmethod getf* ((plist list) key &optional default)
-  (getf plist key default))
-
-(defmethod getf* ((table hash-table) key &optional default)
-  (gethash key table default))
-
-(defmethod getf* ((object standard-object) key &optional default)
-  (let ((slot-name (intern (princ-to-string key)
-                           (symbol-package (class-name (class-of object))))))
-    (if (and (slot-exists-p object slot-name)
-             (slot-boundp object slot-name))
-        (slot-value object slot-name)
-        default)))
+(defun string-to-keyword (string)
+  (nth-value 0 (intern (string-upcase string) :keyword)))
 
 (defmacro getf-env (key)
-  (let ((plist (find-symbol "ENV" *function-package*))
-        (keys (split "." key :sharedp t)))
+  (let ((plist (if (char= (char key 0) #\/)
+                   (find-symbol "TOPENV" rin-template:*function-package*)
+                   (find-symbol "ENV" rin-template:*function-package*)))
+        (keys (split "/" key :sharedp t)))
     (labels ((plist-find (plist keys)
                (if (null keys)
                    plist
                    (plist-find
                     (if (zerop (length (first keys)))
                         plist
-                        `(getf* ,plist ,(make-keyword (first keys))))
+                        `(getf* ,plist ,(string-to-keyword (first keys))))
                     (rest keys)))))
       (plist-find plist keys))))
 
@@ -108,19 +110,17 @@
     (clrhash scanner-hash)))
 
 (defparameter *tag-regexp*
-  `(("\\s+@if\\s+(\\S+)\\s*" . " (cond ((rin-util::funcall-recursive (rin-template::getf-env \"\\1\")) ")
-    ("\\s+@ifequal\\s+(\\S+)\\s+(\\S+)\\s*" . "  (cond ((equal (format nil \"~a\" (rin-util::funcall-recursive (rin-template::getf-env
-     \"\\1\"))) (format nil \"~a\" (rin-util::funcall-recursive (rin-template::getf-env \"\\2\")))) ")
+  `(("\\s+@if\\s+(\\S+)\\s*" . " (cond ((rin-template::getf-env \"\\1\") ")
     ("\\s+@else\\s*" . " ) (t ")
     ("\\s+@endif\\s*" . " )) ")
     ("\\s+@repeat\\s+(\\d+)\\s*" . " (dotimes (i \\1) ")
-    ("\\s+@repeat\\s+(\\S+)\\s*" . " (dotimes (i (or (rin-util::funcall-recursive (rin-template::getf-env \"\\1\")) 0)) ")
+    ("\\s+@repeat\\s+(\\S+)\\s*" . " (dotimes (i (or (rin-template::getf-env \"\\1\") 0)) ")
     ("\\s+@endrepeat\\s*" . " ) ")
-    ("\\s+@for\\s+(\\S+)\\s*" . " (dolist (env (rin-util::funcall-recursive (rin-template::getf-env \"\\1\"))) ")
+    ("\\s+@for\\s+(\\S+)\\s*" . " (dolist (env (rin-template::getf-env \"\\1\")) ")
     ("\\s+@endfor\\s*" . " ) ")
     ("=?\\s+@var\\s+(\\S+)\\s+-(\\S+)\\s+(\\S+)\\s*" . "= (rin-template::escape (rin-template::getf-env \"\\1\") :\\2 :\\3) ")
     ("=?\\s+@var\\s+(\\S+)\\s*" . "= (rin-template::escape (rin-template::getf-env \"\\1\")) ")
-    ("\\s+@with\\s+(\\S+)\\s*" . " (let ((env (rin-util::funcall-recursive (rin-template::getf-env \"\\1\")))) ")
+    ("\\s+@with\\s+(\\S+)\\s*" . " (let ((env (rin-template::getf-env \"\\1\"))) ")
     ("\\s+@endwith\\s*" . " ) ")
     ("\\s+@include\\s+(\\S+)\\s*" . "= (let ((rin-template:*escape-type* rin-template:*escape-type*))
                                             (rin-template:execute (merge-pathnames \"\\1\" template-path-default) :env env)) ")
@@ -199,16 +199,18 @@
 
 (defun construct-function (code)
   "Compile a lisp function from template"
-  (compile nil
-           `,(let ((*package* *function-package*))
+  (let ((form
+         `,(let ((*package* *function-package*))
                (read-from-string
                 (format nil "(lambda (&key env name)
                                (declare (ignorable env))
-                               (let ((template-path-default (if (typep name 'pathname) name *default-pathname-defaults*)))
-                                 (declare (ignorable template-path-default))
+                               (let ((template-path-default (if (typep name 'pathname) name *default-pathname-defaults*))
+                                     (topenv env))
+                                 (declare (ignorable template-path-default topenv))
                                  (with-output-to-string (*standard-output*)
-                                   (progn ~A))))"
+                                 (progn ~A))))"
                         (construct-function-body (expand-tags code)))))))
+    (values (compile nil form) form)))
 
 (defun get-function (name)
   "Get generated function in hash table.
@@ -221,45 +223,50 @@ Recompile if file has been modified."
            (return-from get-function))
           ((and path
                 (> (file-write-date path) (tpl-function-time function)))
-           (let ((code (construct-function (contents path))))
+            (multiple-value-bind (code form)
+                (construct-function (contents path))
              (setf (tpl-function-time function) (file-write-date path)
-                   (tpl-function-code function) code))))
+                   (tpl-function-code function) code
+                   (tpl-function-form function) form))))
     (tpl-function-code function)))
 
 ;; Functions exported
 
 (defgeneric add-template (name template)
-  (:documentation "Add a new template into hash table"))
-
-(defmethod add-template (name (template string))
-  (let ((code (construct-function template)))
-    (setf (gethash name *functions*)
-          (make-function nil
-                         (get-universal-time)
-                         code))))
-
-(defmethod add-template (name (template pathname))
-  (let ((code (construct-function (contents template))))
-    (setf (gethash name *functions*)
-          (make-function template
-                         (file-write-date template)
-                         code))))
+  (:documentation "Add a new template into hash table")
+  (:method (name (template string))
+    (multiple-value-bind (code form)
+        (construct-function template)
+      (setf (gethash name *functions*)
+            (make-function nil
+                           (get-universal-time)
+                           code
+                           form))))
+  (:method (name (template pathname))
+    (multiple-value-bind (code form)
+        (construct-function (contents template))
+      (setf (gethash name *functions*)
+            (make-function template
+                           (file-write-date template)
+                           code
+                           form)))))
 
 (defgeneric execute (name &key env)
-  (:documentation "Execute a generated function with environment"))
-
-(defmethod execute ((name t) &key env)
-  (funcall (get-function name) :env env :name name))
-
-(defmethod execute ((name pathname) &key env)
-  (let ((fun (or (get-function name)
-                 (tpl-function-code (add-template name name)))))
-    (funcall fun :env env :name name)))
+  (:documentation "Execute a generated function with environment")
+  (:method ((name t) &key env)
+    (funcall (get-function name) :env env :name name))
+  (:method ((name pathname) &key env)
+    (let ((fun (or (get-function name)
+                   (tpl-function-code (add-template name name)))))
+      (funcall fun :env env :name name))))
 
 (defun clear-functions ()
   (clrhash *functions*))
 
 (defun remove-function (name)
   (remhash name *functions*))
+
+(defun pprint-tpl (name)
+  (pprint (tpl-function-form (gethash name *functions*))))
 
 ;;; template.lisp ends here

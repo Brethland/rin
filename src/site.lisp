@@ -46,10 +46,9 @@
   (let ((url (url-of obj)))
     (remhash url *site*)))
 
-(defun write-to-disk (obj &optional theme &rest compile-args)
-  (let ((html (if (or theme compile-args)
-                  (apply #'compile-page obj theme compile-args)
-                  (compile-page obj nil)))
+(defun write-to-disk (obj theme)
+  "Write compiled HTML to disk"
+  (let ((html (funcall theme obj))
         (url (namestring (url-of obj))))
     (rin-util:write-file (merge-pathnames url (merge-pathnames #p"site/" (getcwd)))
                          html)))
@@ -62,12 +61,21 @@
     (make-pathname :type type :defaults path)))
 
 (defgeneric load-from-disk (class)
-  (:documentation "Load all files depends on CLASS"))
+  (:documentation "Load all files depends on CLASS")
+  (:method (class)
+    (error "Unsupported class ~a~%" class)))
 
 (defmethod load-from-disk :before (class)
   (delete-all (class-name class)))
 
 (defgeneric save (class)
-  (:documentation "Save compiled HTML to path depends on CLASS"))
+  (:documentation "Save compiled HTML to path depends on CLASS")
+  (:method (class)
+    (error "Unsupported class ~a~%" class)))
+
+(defgeneric find-theme (class)
+  (:documentation "Find theme template at style path depends on CLASS")
+  (:method (class)
+    (error "Unsupported class ~a~%" class)))
 
 ;;; site.lisp ends here
