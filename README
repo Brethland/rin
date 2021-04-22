@@ -1,3 +1,20 @@
 Rin
 
 A fast static site generator written in common lisp.
+
+Usage
+
+``` sh
+ros build ./roswell/rin.ros
+```
+
+Supported Commands
+
+1. -i NAME, init an empty repo
+
+2. -n NAME, generate a new post, must in repo's dir
+
+3. -g, build site under /site folder
+
+4. -h, show help
+
