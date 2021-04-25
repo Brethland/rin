@@ -1,14 +1,17 @@
 Rin
+======
 
 A fast static site generator written in common lisp.
 
 Usage
+======
 
 ``` sh
 ros build ./roswell/rin.ros
 ```
 
 Supported Commands
+======
 
 1. -i NAME, init an empty repo
 

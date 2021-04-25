@@ -42,7 +42,11 @@ tags:
            :description "create a new post"
            :short #\n
            :long "new"
-           :arg-parser #'identity)))
+           :arg-parser #'identity)
+    (:name :generate
+           :description "build site under /site folder"
+           :short #\g
+           :long "generate")))
 
 (defun unknown-option (condition)
   "Error handler for opts:unknown-option"
@@ -104,6 +108,17 @@ tags:
                         year month date hour minute second)
                 (format t "Successfully create file ~a!~%" path))))))))
 
+(defun generate ()
+  "Generate HTML file to /site"
+  (let ((site-path (merge-pathnames #p"site/" (getcwd))))
+    (progn
+      (load-config)
+      (ensure-directories-exist site-path)
+      (sync-static site-path)
+      (load-from-disk (find-class 'post))
+      (save (find-class 'post))
+      (format t "Successfully compile site!~%"))))
+
 (defun main (&rest args)
   "Entry of rin"
   (declare (ignore args))
@@ -121,6 +136,9 @@ tags:
       (quit 0))
     (when-option (options :new)
       (new it)
+      (quit 0))
+    (when-option (options :generate)
+      (generate)
       (quit 0))
     (when free-args
       (format t "unexpected args: ~a~2%"

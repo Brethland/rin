@@ -53,6 +53,11 @@
     (rin-util:write-file (merge-pathnames url (merge-pathnames #p"site/" (getcwd)))
                          html)))
 
+(defun sync-static (site-path)
+  "Sync static site files"
+  (let ((dir (merge-pathnames #p"static/" (getcwd))))
+    (run-program (format nil "rsync --delete -raz ~a ~a" dir site-path))))
+
 (defun generate-url (obj name)
   "Generate url for OBJ with NAME"
   (let* ((route (class-name (class-of obj)))
