@@ -117,6 +117,8 @@ tags:
       (sync-static site-path)
       (load-from-disk (find-class 'post))
       (save (find-class 'post))
+      (load-from-disk (find-class 'feed))
+      (save (find-class 'feed))
       (format t "Successfully compile site!~%"))))
 
 (defun main (&rest args)

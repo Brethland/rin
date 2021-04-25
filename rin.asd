@@ -13,6 +13,7 @@
                :uiop
                :alexandria
                :cl-fad
+               :local-time
                :3bmd
                :3bmd-ext-code-blocks)
   :components ((:module "src"
@@ -20,6 +21,7 @@
                 ((:file "rin" :depends-on ("packages"))
                  (:file "site" :depends-on ("packages"))
                  (:file "post" :depends-on ("packages"))
+                 (:file "feed" :depends-on ("packages"))
                  (:file "template" :depends-on ("util"))
                  (:file "packages" :depends-on ("util" "template"))
                  (:file "util")))))

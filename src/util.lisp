@@ -9,7 +9,8 @@
            #:parse-initarg
            #:parse-metadata
            #:do-files
-           #:write-file))
+           #:write-file
+           #:take-up-to))
 
 (in-package :rin-util)
 
@@ -90,5 +91,9 @@
                        :if-does-not-exist :create
                        :external-format :utf-8)
     (write file :stream out :escape nil)))
+
+(defun take-up-to (n seq)
+  "Take elements from SEQ until all elements or N have been taken."
+  (subseq seq 0 (min (length seq) n)))
 
 ;;; util.lisp ends here
